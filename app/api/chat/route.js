@@ -1,0 +1,7 @@
+import { NextResponse } from 'next/server';
+import { answerWithGemini } from '@/lib/gemini';
+import { retrieveRelevantKnowledge } from '@/lib/rag';
+const hits = new Map();
+const fallback = "I don't have verified information on that specific requirement yet. I can help you send the requirement to the NT Enterprises team for confirmation.";
+function rateLimit(ip) { const now=Date.now(), item=hits.get(ip)||{count:0,start:now}; if(now-item.start>60000){item.count=0;item.start=now;} item.count++;hits.set(ip,item);return item.count<=12; }
+export async function POST(request) { try { const ip=request.headers.get('x-forwarded-for')?.split(',')[0]||'local'; if(!rateLimit(ip)) return NextResponse.json({answer:'Please wait a moment before sending another message.'},{status:429}); const {message,history=[]}=await request.json(); if(typeof message!=='string'||!message.trim()||message.length>1200)return NextResponse.json({error:'Please enter a message of up to 1,200 characters.'},{status:400}); const chunks=await retrieveRelevantKnowledge(message); if(!chunks?.length)return NextResponse.json({answer:fallback}); const context=chunks.map(c=>c.content).join('\n\n'); const answer=await answerWithGemini(message,context,Array.isArray(history)?history:[]); return NextResponse.json({answer:answer||fallback}); } catch (error) { console.error('NT Assist error',error.message); return NextResponse.json({answer:'NT Assist is temporarily unavailable. You can still send your requirement to the NT Enterprises team.'},{status:503}); } }

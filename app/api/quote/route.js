@@ -1,0 +1,5 @@
+import { NextResponse } from 'next/server';
+import { insert } from '@/lib/supabase';
+import { summarizeEnquiry } from '@/lib/gemini';
+const clean = value => typeof value==='string' ? value.trim().replace(/[<>]/g,'').slice(0,2000) : '';
+export async function POST(request) { try { const raw=await request.json(); const enquiry=Object.fromEntries(['name','company','email','phone','product','quantity','application','requirement'].map(key=>[key,clean(raw[key])])); if(!enquiry.name||!enquiry.email||!enquiry.phone||!enquiry.product||!enquiry.application||!/^\S+@\S+\.\S+$/.test(enquiry.email))return NextResponse.json({error:'Please complete the required contact and requirement fields.'},{status:400}); let summary=null;try{summary=await summarizeEnquiry(enquiry)}catch{} const reference=`NT-${new Date().getFullYear()}-${Math.floor(1000+Math.random()*9000)}`; await insert('enquiries',{...enquiry,ai_summary:summary,status:'New',reference}); return NextResponse.json({reference}); }catch(error){console.error('Quote error',error.message);return NextResponse.json({error:'Unable to submit the enquiry right now.'},{status:503});} }
